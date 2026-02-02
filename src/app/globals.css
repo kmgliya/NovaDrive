@@ -1,0 +1,15 @@
+@config "../../tailwind.config.ts";
+@import "tailwindcss";
+
+html, body {
+  background: #121212;
+  color: #ffffff;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  /* Плавность шрифтов */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
