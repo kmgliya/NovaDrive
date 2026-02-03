@@ -1,20 +1,31 @@
-# NovaDrive — Premium Booking Platform (Frontend)
+# NovaDrive — Премиальная платформа бронирования (Frontend)
 
-NovaDrive is a Next.js App Router frontend for a premium booking platform inspired by SIXT.
-Built per **Test Assignment #2 (Frontend: Dashboard + Business Logic)** with strict FSD architecture, complex slot logic,
-optimistic updates, and realistic admin UX.
+NovaDrive — фронтенд на Next.js (App Router) для премиального сервиса бронирования, вдохновленного SIXT.
+Сделано по **Тестовому заданию №2 (Frontend: Dashboard + бизнес‑логика)** с FSD‑архитектурой, сложной логикой слотов,
+оптимистичными обновлениями и реалистичным админ‑UX.
 
-## Stack
+## Что это за проект
+
+Полный фронтенд для онлайн‑бронирования услуг:
+- многошаговый мастер бронирования,
+- генерация слотов с буферами и конфликтами,
+- блокировки слотов по таймеру,
+- личный кабинет пользователя (перенос/отмена),
+- админ‑панель (автопарк + мастера),
+- RU/EN локализация,
+- страница «О нас» с видео и Google Maps.
+
+## Стек
 
 - **Next.js 16 (App Router)** + TypeScript
 - **Tailwind CSS** + `clsx`/`tailwind-merge`
-- **React Query** for server state
-- **Zustand** for UI/navigation state (wizard, slot locks, auth)
-- **Axios** with mock adapter (latency, conflicts, partial errors)
-- **Recharts** for dashboards
-- **Lucide React** icons
+- **React Query** для серверного состояния
+- **Zustand** для UI/навигационного состояния (wizard, locks, auth)
+- **Axios** с mock‑adapter (задержки, конфликты, частичные ошибки)
+- **Recharts** для дашбордов
+- **Lucide React** иконки
 
-## Architecture (FSD)
+## Архитектура (FSD)
 
 ```
 shared/     ui, api, utils, i18n
@@ -24,129 +35,149 @@ widgets/    service-selector, specialist-schedule, booking-summary, user-booking
 app/        services, booking, profile, admin, about, catalog
 ```
 
-Business logic (slot generation, locks, conflicts) is isolated from UI.
+Бизнес‑логика (слоты, локи, конфликты) вынесена из UI.
 
-## Core Requirements Implemented
+## Ключевая бизнес‑логика
 
-### Data Models (TypeScript)
-- **Service**: id, title, duration, price, buffer before/after
-- **Specialist**: id, name, specialization, weekly working hours, services, avatar
-- **TimeSlot**: id, specialistId, start/end, status (free/locked/booked)
-- **Booking**: id, serviceId, specialistId, timeSlotId, client, status, createdAt
-- **User**: id, name, phone, role
+### Генерация слотов
+- Формируются по **рабочему времени**, **длительности услуги**, **буферам до/после**.
+- Пересечения исключаются.
+- На день у мастера генерируется **2–3 реалистичных слота**.
 
-### Slot Generation & Availability
-- Generates **2–3 realistic slots per day** per specialist.
-- Considers: working hours, service duration, buffer before/after.
-- Excludes intersections with existing bookings.
+### Блокировка слота (3 минуты)
+- При выборе слот блокируется на 3 минуты.
+- Если бронь не подтверждена — слот освобождается автоматически.
+- Блокировки живут в Zustand + таймеры очистки.
 
-### Slot Locking (3 minutes)
-- Selecting a slot locks it for 3 minutes.
-- Lock is released automatically if not confirmed.
-- Locks are persisted in UI state with timer cleanup.
+### Мастер бронирования
+- 4 шага: услуга → мастер → время → оплата.
+- Состояние сохраняется в Zustand (persist) и не сбрасывается при обновлении страницы.
 
-### Booking Wizard (4 steps)
-1) Select service
-2) Select specialist
-3) Select date/time slot
-4) Payment + confirmation
+### Перенос / отмена
+- Оптимистичное обновление.
+- Проверка конфликтов на mock‑API.
+- Откат при ошибках.
+- Перенос выполняется через выбор **свободного слота** (как при новом бронировании).
 
-Wizard state is persisted in Zustand (page refresh does not reset flow).
+## Реализация требований ТЗ
 
-### Reschedule & Cancel (Optimistic)
-- Reschedule booking with conflict checks.
-- Optimistic updates + rollback on API error.
-- Cancel booking updates UI immediately.
+### Модели данных (TypeScript)
+- **Service**: id, название, длительность, стоимость, буферы до/после
+- **Specialist**: id, имя, специализация, рабочие часы по дням, список услуг, аватар
+- **TimeSlot**: id, specialistId, start/end, статус (free/locked/booked)
+- **Booking**: id, serviceId, specialistId, timeSlotId, клиент, статус, createdAt
+- **User**: id, имя, телефон, роль
 
-### User Profile
-- Shows user data (name, email, phone, status)
-- Shows **active** and **past** bookings
-- Allows reschedule/cancel for active bookings
+### Слоты и доступность
+- 2–3 слота в день на одного мастера.
+- Учтены буферы и существующие брони.
 
-### Admin Panel
-- Dashboard with revenue trend + dataset-driven chart
-- Car management
-- Specialist management (edit name, avatar, specialization)
-- Admin access protected by role
+### Временные блокировки
+- Слот блокируется на 3 минуты.
+- Авто‑освобождение, если бронирование не завершено.
 
-## Data & Mock API
+### Многошаговое бронирование
+1) Выбор услуги  
+2) Выбор мастера  
+3) Выбор даты/времени  
+4) Оплата и подтверждение
 
-- Mock API simulates latency, conflicts, partial failures.
-- Bookings and specialists persist in `localStorage` for realism.
-- Admin changes persist across reloads.
+### Личный кабинет
+- Профиль пользователя (имя, телефон, email, статус)
+- Активные и прошлые брони
+- Перенос и отмена активных
 
-## Car Dataset Integration (Kaggle)
+### Админ‑панель
+- Дашборд + динамические графики
+- Управление автопарком
+- Управление мастерами (имя, фото, специализация)
+- Защита роли администратора
 
-Dataset: https://www.kaggle.com/datasets/CooperUnion/cardataset  
-Local CSV:
+## Mock API
+
+- Симуляция задержек, конфликтов, частичных ошибок.
+- Брони и мастера сохраняются в `localStorage`.
+
+### Эндпоинты
+- `GET /services`, `GET /specialists`, `GET /bookings`, `GET /dashboard`
+- `POST /slots/lock`, `DELETE /slots/lock`
+- `POST /bookings`, `PATCH /bookings/:id` (перенос/отмена)
+- `PATCH /specialists/:id` (изменения мастеров)
+
+## Kaggle Dataset (Интеграция)
+
+Датасет: https://www.kaggle.com/datasets/CooperUnion/cardataset  
+Файл:
 ```
 public/data/car_dataset.csv
 ```
-Dashboard uses it to compute:
-- **Average MSRP**
-- **Total models**
-- **Top makes** (bar chart)
+Дашборд использует его для расчета:
+- **Средней цены MSRP**
+- **Количества моделей**
+- **Топ‑брендов** (bar chart)
 
-Replace `public/data/car_dataset.csv` with the full Kaggle CSV to make dashboard fully data‑driven.
+Чтобы подключить полный датасет — просто замените `public/data/car_dataset.csv`.
 
-## Localization (RU/EN)
+## Локализация (RU/EN)
 
-Locale switcher near the logo.
-All key UI text is translated via `useI18n` store.
+Переключатель языка около логотипа.
+Все ключевые тексты переведены через `useI18n`.
 
-## Pages / Routes
+## Маршруты
 
-- `/` — Home
-- `/services` — Services selection
-- `/booking` — Booking wizard
-- `/profile` — User profile + bookings
-- `/admin` — Admin dashboard (guarded)
-- `/about` — About page with video + Google Map (Bishkek address)
-- `/catalog` — Car catalog
-- `/login` `/register` — Auth (mock)
+- `/` — Главная
+- `/services` — Услуги
+- `/booking` — Бронирование
+- `/profile` — Профиль пользователя
+- `/admin` — Админ‑панель (guarded)
+- `/about` — О нас (видео + карта)
+- `/catalog` — Каталог авто
+- `/login` `/register` — Авторизация (mock)
 
-## Admin Access
+## Доступ администратора
 
-To register/login as admin, use **Admin code**:
+Для регистрации/входа админа введите код:
 ```
 novadrive-admin
 ```
 
-Admin menu is visible only for users with role `admin`.
+## Оплата (Mock)
 
-## Payment UX (Mock)
+Оплата имитируется:
+- Вводятся числовые поля карты
+- Подтверждение доступно после заполнения
+- Итог отображается в блоке оплаты
 
-Payment is mock but behaves realistically:
-- Card fields accept numeric input
-- Confirmation requires all fields filled
-- Total is shown in the payment block
-
-No real charges are made.
-
-## Run Locally
+## Запуск
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000
+Открыть: http://localhost:3000
 
-## Notes / Trade-offs
+## Trade-offs
 
-- Mock API is used to simulate real backend scenarios (conflicts, delays).
-- Data is persisted in localStorage to simulate multi-session usage.
-- Admin role is simulated with a secret code instead of backend authorization.
+- Бэкенд заменен mock‑API для имитации конфликтов и задержек.
+- Данные хранятся в localStorage для реалистичности.
+- Роль администратора задается секретным кодом (без backend‑авторизации).
 
-## Test Assignment Coverage Checklist
+## Чеклист покрытия ТЗ
 
-- ✅ FSD structure
-- ✅ Complex slot generation
-- ✅ Slot locking + timers
-- ✅ Booking wizard with persisted state
-- ✅ Reschedule + cancel (optimistic + rollback)
-- ✅ User profile with active/past bookings
-- ✅ Background sync (refetch intervals)
-- ✅ Conflict simulation and partial errors
-- ✅ Strict typing and state separation
-- ✅ Dynamic admin dashboard with dataset
+- ✅ FSD структура
+- ✅ Генерация слотов + конфликты
+- ✅ Блокировка слотов + таймер
+- ✅ Мастер бронирования с persist
+- ✅ Перенос/отмена (оптимистично + rollback)
+- ✅ Личный кабинет (active/past)
+- ✅ Фоновая синхронизация
+- ✅ Моделирование конфликтов и ошибок
+- ✅ Строгая типизация
+- ✅ Динамический дашборд на датасете
+
+## Для защиты проекта
+
+- Бизнес‑логика вынесена в `entities`/`features`, UI в `widgets`.
+- React Query — кеш и синхронизация; Zustand — только UI/flow.
+- Kaggle dataset подключен в дашборд для реалистичных метрик.

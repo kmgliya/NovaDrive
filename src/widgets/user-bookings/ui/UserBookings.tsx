@@ -9,6 +9,9 @@ import { useRescheduleBooking } from "@/features/reschedule-booking/model/useRes
 import { Button } from "@/shared/ui/Button";
 import { getCurrentUser } from "@/shared/api/current-user";
 import { useI18n } from "@/shared/i18n/useI18n";
+import { generateTimeSlots } from "@/entities/timeSlot/lib/generateTimeSlots";
+import { useSlotLockStore } from "@/features/lock-slot/model/store";
+import { useLockSlot } from "@/features/lock-slot/model/useLockSlot";
 
 export const UserBookings = () => {
   const { t } = useI18n();
@@ -21,9 +24,17 @@ export const UserBookings = () => {
   const { data: specialists } = useQuery({ queryKey: ["specialists"], queryFn: fetchSpecialists });
   const cancelBooking = useCancelBooking();
   const rescheduleBooking = useRescheduleBooking();
+  const lockedSlots = useSlotLockStore((state) => state.locks);
+  const { lockSlot, releaseSlot } = useLockSlot();
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [newStart, setNewStart] = useState<string>("");
+  const [rescheduleDate, setRescheduleDate] = useState<string>("");
+  const [selectedSlot, setSelectedSlot] = useState<{
+    id: string;
+    startTime: string;
+    endTime: string;
+  } | null>(null);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
 
   const currentUser = getCurrentUser();
   const userBookings = (bookings ?? []).filter((booking) => {
@@ -77,39 +88,128 @@ export const UserBookings = () => {
                 </div>
 
                 {editingId === booking.id ? (
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <input
-                      type="datetime-local"
-                      value={newStart}
-                      onChange={(event) => setNewStart(event.target.value)}
-                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
-                    />
-                    <Button
-                      onClick={() => {
-                        if (!newStart || !service) return;
-                        const startDate = new Date(newStart);
-                        const endDate = addMinutes(startDate, service.durationMins);
-                        const timeSlotId = `slot-${format(startDate, "yyyy-MM-dd")}-${format(startDate, "HH-mm")}`;
-                        rescheduleBooking.mutate({
-                          bookingId: booking.id,
-                          timeSlotId,
-                          startTime: startDate.toISOString(),
-                          endTime: endDate.toISOString(),
-                        });
-                        setEditingId(null);
-                        setNewStart("");
-                      }}
-                      className="px-4 py-2 text-xs"
-                    >
-                      {t("bookings.apply")}
-                    </Button>
-                    <Button variant="ghost" onClick={() => setEditingId(null)} className="px-4 py-2 text-xs">
-                      {t("bookings.close")}
-                    </Button>
+                  <div className="mt-4 space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <input
+                        type="date"
+                        value={rescheduleDate}
+                        onChange={(event) => {
+                          setRescheduleDate(event.target.value);
+                          setSelectedSlot(null);
+                          setRescheduleError(null);
+                        }}
+                        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white"
+                      />
+                      {rescheduleError ? (
+                        <span className="text-xs text-red-400">{rescheduleError}</span>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                      {(service && specialist && bookings
+                        ? generateTimeSlots({
+                            date: rescheduleDate
+                              ? new Date(rescheduleDate)
+                              : startTime ?? new Date(),
+                            service,
+                            specialist,
+                            bookings: (bookings ?? []).filter((item) => item.id !== booking.id),
+                            lockedSlotIds: Object.keys(lockedSlots),
+                          })
+                        : []
+                      ).map((slot) => {
+                        const timeLabel = format(new Date(slot.startTime), "HH:mm");
+                        const isLocked = slot.status === "locked";
+                        const isBooked = slot.status === "booked";
+                        const isSelected = selectedSlot?.id === slot.id;
+
+                        return (
+                          <button
+                            key={slot.id}
+                            disabled={isLocked || isBooked}
+                            onClick={async () => {
+                              setRescheduleError(null);
+                              try {
+                                if (selectedSlot?.id && selectedSlot.id !== slot.id) {
+                                  await releaseSlot(selectedSlot.id);
+                                }
+                                await lockSlot({
+                                  slotId: slot.id,
+                                  specialistId: specialist.id,
+                                  startTime: slot.startTime,
+                                  endTime: slot.endTime,
+                                });
+                                setSelectedSlot({
+                                  id: slot.id,
+                                  startTime: slot.startTime,
+                                  endTime: slot.endTime,
+                                });
+                              } catch (err) {
+                                setRescheduleError(t("summary.failed"));
+                              }
+                            }}
+                            className={`rounded-full border px-4 py-2 text-sm transition ${
+                              isBooked
+                                ? "border-white/10 bg-white/5 text-white/30"
+                                : isLocked
+                                ? "border-primary/40 bg-primary/10 text-primary"
+                                : isSelected
+                                ? "border-primary/60 bg-primary/20 text-primary"
+                                : "border-white/20 bg-transparent hover:border-primary/60 hover:bg-primary/10"
+                            }`}
+                          >
+                            {timeLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        onClick={() => {
+                          if (!selectedSlot) return;
+                          rescheduleBooking.mutate({
+                            bookingId: booking.id,
+                            timeSlotId: selectedSlot.id,
+                            startTime: selectedSlot.startTime,
+                            endTime: selectedSlot.endTime,
+                          });
+                          setEditingId(null);
+                          setSelectedSlot(null);
+                          setRescheduleDate("");
+                        }}
+                        className="px-4 py-2 text-xs"
+                        disabled={!selectedSlot}
+                      >
+                        {t("bookings.apply")}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          if (selectedSlot?.id) {
+                            releaseSlot(selectedSlot.id);
+                          }
+                          setEditingId(null);
+                          setSelectedSlot(null);
+                          setRescheduleDate("");
+                        }}
+                        className="px-4 py-2 text-xs"
+                      >
+                        {t("bookings.close")}
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <div className="mt-4 flex flex-wrap gap-3">
-                    <Button onClick={() => setEditingId(booking.id)} className="px-4 py-2 text-xs">
+                    <Button
+                      onClick={() => {
+                        setEditingId(booking.id);
+                        setRescheduleDate(
+                          startTime ? format(startTime, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
+                        );
+                        setSelectedSlot(null);
+                        setRescheduleError(null);
+                      }}
+                      className="px-4 py-2 text-xs"
+                    >
                       {t("bookings.reschedule")}
                     </Button>
                     <Button
